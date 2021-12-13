@@ -1,0 +1,1 @@
+Refer to https://bbq12340.github.io/altcoin1/
