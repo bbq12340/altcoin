@@ -1,34 +1,48 @@
+import requests
 from dotenv import load_dotenv
-from pytwitter import Api
 
-import os
+import os, json
 from datetime import datetime, timedelta
 
+import requests
+
 load_dotenv()
-api = Api(bearer_token=os.getenv('BEARER_TOKEN'))
 
-def users_lookup(user_names):
-    res = api.get_users(usernames=user_names)
-    return res.data
+API_URL = 'https://api.twitter.com/2'
 
-def timeline_lookup(user_id, from_, days):
-    res = api.get_timelines(user_id=user_id, 
-                          start_time=(from_-timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"), 
-                          end_time=from_.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                          max_results=100)
-    return res.data
+__header__ = {
+        "Authorization": f"Bearer {os.getenv('BEARER_TOKEN')}"
+    }
 
-def tweet_lookup(tweet_id):
-    res = api.get_tweet(tweet_id)
-    return res.data
+def user_id_lookup(username):
+    url = f'{API_URL}/users/by/username/{username}'
+    res = requests.get(url, headers=__header__).json()
+    return res['data']['id']
+
+def timeline_lookup(id, **kwargs):
+    url = f'{API_URL}/users/{id}/tweets'
+    payload = {
+        'max_results': 100,
+        'tweet.fields': 'author_id,attachments,created_at,public_metrics,conversation_id'
+    }
+    if kwargs:
+        payload.update(kwargs)
+    res = requests.get(url, params=payload, headers=__header__).json()
+    return res
 
 if __name__=='__main__':
-    user_names = 'TheMoonCarl'
-    users_res = users_lookup(user_names)
-    for user in users_res:
-        tweets_res = timeline_lookup(user.id, from_=datetime.now(), days=10)
-    for tweet in tweets_res:
-        tweet_res = tweet_lookup(tweet.id)
-        print(tweet_res.text)
-
-
+    today = datetime.now()
+    last_week = (today-timedelta(days=7))
+    id = user_id_lookup('TheMoonCarl')
+    data = []
+    tweets_data = timeline_lookup(id, start_time=last_week.strftime("%Y-%m-%dT%H:%M:%SZ"), end_time=today.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    while True:
+        try:
+            data.extend(tweets_data['data'])
+            next_token = tweets_data['meta']['next_token']
+            tweets_data = timeline_lookup(id, start_time=last_week.strftime("%Y-%m-%dT%H:%M:%SZ"), end_time=today.strftime("%Y-%m-%dT%H:%M:%SZ"), pagination_token=next_token)
+        except KeyError:
+            print(tweets_data)
+            break
+    with open('sample/data.json', 'w') as f:
+        json.dump(data, f, indent=4, sort_keys=True, ensure_ascii=False)
